@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bharat Guessr — Where in India?</title>
+<meta name="description" content="A GeoGuessr-style game on real Indian streets. Five rounds, one pin each: how well do you know India?">
+<meta property="og:title" content="Bharat Guessr — Where in India?">
+<meta property="og:description" content="Dropped on a real street somewhere in India. Read the signboards, then pin your guess.">
+<meta property="og:image" content="https://adij26.github.io/bharat-guessr/docs/start-screen.png">
+<meta property="og:url" content="https://adij26.github.io/bharat-guessr/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📍</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -160,6 +167,11 @@
   #breakdown .row .place{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .btn-ghost{background:transparent;color:#c7cdd9;border:1px solid var(--line);padding:12px 26px;border-radius:8px;font-size:14px}
   .btn-ghost:hover{border-color:var(--marigold);color:var(--marigold)}
+  .best{color:#8f96a5;font-size:13px;letter-spacing:.08em;min-height:1em}
+  .best b{color:var(--marigold)}
+  .best.new{color:var(--green);font-weight:700}
+  .final-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .kbd-hint{color:#6f7787;font-size:12px}
 
   .leaflet-container{font:inherit}
   @media (max-width:640px){
@@ -189,6 +201,7 @@
     <div><b>&lt; 250 m</b>for a perfect 100</div>
   </div>
   <button class="btn-primary" id="startBtn">Start the journey</button>
+  <div class="best" id="startBest"></div>
 </div>
 
 <!-- ======== GAME ======== -->
@@ -242,8 +255,13 @@
     <div class="b-main" id="finalScore">0 / 100</div>
     <div class="b-sub" id="finalVerdict">—</div>
   </div>
+  <div class="best" id="finalBest"></div>
   <div id="breakdown"></div>
-  <button class="btn-primary" id="againBtn">Play again</button>
+  <div class="final-actions">
+    <button class="btn-primary" id="againBtn">Play again</button>
+    <button class="btn-ghost" id="shareBtn">Share result</button>
+  </div>
+  <div class="kbd-hint">Tip: press Enter to guess and to move to the next round</div>
 </div>
 
 <script>
@@ -309,6 +327,26 @@ function scoreFor(km){
 }
 function fmtDist(km){
   return km < 1 ? Math.round(km*1000) + " m" : (km < 10 ? km.toFixed(1) : Math.round(km)) + " km";
+}
+function emojiFor(pts){
+  return pts >= 90 ? "🟩" : pts >= 60 ? "🟨" : pts >= 30 ? "🟧" : "🟥";
+}
+function shareText(avg, rounds){
+  return "Bharat Guessr 🇮🇳 " + avg + "/100\n" + rounds.map(r => emojiFor(r.pts)).join("") +
+         "\nhttps://adij26.github.io/bharat-guessr/";
+}
+
+/* Best score lives in localStorage; storage can be blocked, so fail quietly. */
+const BEST_KEY = "bharatGuessr.best";
+function getBest(){
+  try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch(e){ return 0; }
+}
+function setBest(v){
+  try { localStorage.setItem(BEST_KEY, String(v)); } catch(e){}
+}
+function renderStartBest(){
+  const b = getBest();
+  $("startBest").innerHTML = b ? "Your best: <b>" + b + " / 100</b>" : "";
 }
 
 const pinIcon = L.divIcon({
@@ -399,6 +437,17 @@ function showFinal(){
     avg >= 35 ? "Somewhere on the subcontinent…" :
                 "Time for a road trip";
   const bd = $("breakdown");
+  const prevBest = getBest();
+  const fb = $("finalBest");
+  if(avg > prevBest){
+    setBest(avg);
+    fb.className = "best new";
+    fb.textContent = prevBest ? "New personal best! (was " + prevBest + ")" : "First score on the board!";
+  } else {
+    fb.className = "best";
+    fb.innerHTML = "Your best: <b>" + prevBest + " / 100</b>";
+  }
+  $("shareBtn").textContent = "Share result";
   bd.innerHTML = "";
   results.forEach((r,i) => {
     const row = document.createElement("div");
@@ -411,7 +460,24 @@ function showFinal(){
 }
 
 /* ---------------- wiring ---------------- */
+renderStartBest();
 $("startBtn").addEventListener("click", startGame);
+$("shareBtn").addEventListener("click", async () => {
+  const text = shareText(Math.round(total / ROUNDS), results);
+  try {
+    if(navigator.share){ await navigator.share({text}); return; }
+    await navigator.clipboard.writeText(text);
+    $("shareBtn").textContent = "Copied ✓";
+  } catch(e){
+    if(e && e.name === "AbortError") return;  // user closed the share sheet
+    window.prompt("Copy your result:", text);
+  }
+});
+document.addEventListener("keydown", e => {
+  if(e.key !== "Enter") return;
+  if($("gameScreen").classList.contains("active") && guessLatLng){ submitGuess(); }
+  else if($("resultScreen").classList.contains("active")){ nextRound(); }
+});
 $("againBtn").addEventListener("click", startGame);
 $("guessBtn").addEventListener("click", () => { if(guessLatLng) submitGuess(); });
 $("nextBtn").addEventListener("click", nextRound);
