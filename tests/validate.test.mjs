@@ -56,3 +56,16 @@ test("distance formatting", () => {
   assert.equal(fmtDist(3.456), "3.5 km");
   assert.equal(fmtDist(812.3), "812 km");
 });
+
+test("share card: one square per round, colour by score", () => {
+  const { emojiFor, shareText } = Function(
+    `${grab("emojiFor")}\n${grab("shareText")}\nreturn { emojiFor, shareText };`
+  )();
+  assert.equal(emojiFor(100), "🟩");
+  assert.equal(emojiFor(70), "🟨");
+  assert.equal(emojiFor(40), "🟧");
+  assert.equal(emojiFor(5), "🟥");
+  const text = shareText(64, [{ pts: 95 }, { pts: 70 }, { pts: 40 }, { pts: 10 }, { pts: 100 }]);
+  assert.match(text, /64\/100/);
+  assert.ok(text.includes("🟩🟨🟧🟥🟩"));
+});

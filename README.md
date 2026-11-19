@@ -15,6 +15,9 @@
 2. Read the clues: shop signs, scripts, number plates, autos, architecture, the coast or the hills.
 3. Click the map to drop your pin, then hit **Make guess**.
 4. Five rounds, up to 100 points each. Land within 250 m for a perfect score.
+5. Beat your personal best, then share your result card (🟩🟨🟧🟥, one square per round).
+
+Keyboard: press **Enter** to make your guess and to move to the next round.
 
 ## How scoring works
 
