@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bharat Guessr — Where in India?</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#131720;
+    --ink-2:#1c222e;
+    --board:#0d0f13;
+    --marigold:#ffb300;
+    --marigold-deep:#e08900;
+    --cream:#f6f1e7;
+    --paper:#fbf8f2;
+    --green:#1e9e63;
+    --red:#d94f3d;
+    --line:#2b3342;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;
+    background:var(--ink);
+    color:var(--cream);
+    overflow:hidden;
+  }
+  button{font-family:inherit;cursor:pointer;border:none}
+
+  /* ---------- Station board (signature element) ---------- */
+  .board{
+    background:var(--board);
+    border:3px solid #262c38;
+    border-radius:10px;
+    padding:14px 26px;
+    text-align:center;
+    box-shadow:0 8px 30px rgba(0,0,0,.5), inset 0 0 0 2px rgba(255,179,0,.12);
+  }
+  .board .b-top{
+    color:var(--marigold);
+    font-size:11px;
+    letter-spacing:.35em;
+    text-transform:uppercase;
+    opacity:.85;
+  }
+  .board .b-main{
+    color:var(--marigold);
+    font-weight:700;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    line-height:1.15;
+    text-shadow:0 0 18px rgba(255,179,0,.35);
+  }
+  .board .b-sub{color:#cfc6ae;font-size:12px;letter-spacing:.15em;text-transform:uppercase;margin-top:4px}
+
+  /* ---------- Screens ---------- */
+  .screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+  .screen.active{display:flex}
+
+  /* Start screen */
+  #startScreen{background:
+    radial-gradient(1200px 500px at 50% -10%, #223049 0%, transparent 60%),
+    var(--ink);
+    gap:26px;text-align:center}
+  #startScreen .board .b-main{font-size:clamp(28px,6vw,54px)}
+  .tagline{color:#aeb6c6;max-width:520px;line-height:1.55;font-size:15px}
+  .rules{
+    display:flex;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    background:var(--ink-2);
+  }
+  .rules div{padding:12px 22px;font-size:13px;color:#c7cdd9;border-right:1px solid var(--line)}
+  .rules div:last-child{border-right:none}
+  .rules b{display:block;color:var(--marigold);font-size:18px;margin-bottom:2px}
+  .btn-primary{
+    background:var(--marigold);color:#221a00;font-weight:700;font-size:16px;
+    letter-spacing:.08em;text-transform:uppercase;
+    padding:15px 44px;border-radius:8px;
+    box-shadow:0 6px 0 var(--marigold-deep);
+    transition:transform .08s ease, box-shadow .08s ease;
+  }
+  .btn-primary:hover{filter:brightness(1.05)}
+  .btn-primary:active{transform:translateY(4px);box-shadow:0 2px 0 var(--marigold-deep)}
+  .btn-primary:focus-visible,.btn-ghost:focus-visible{outline:3px solid #fff;outline-offset:2px}
+
+  /* ---------- Game screen ---------- */
+  #gameScreen{padding:0;display:none}
+  #gameScreen.active{display:block}
+  #svWrap{position:absolute;inset:0;background:#000}
+  #svFrame{width:100%;height:100%;border:0}
+  /* patches that hide the address / links Google prints on the embed */
+  .patch{position:absolute;background:#0d0f13;z-index:5;border-radius:0 0 10px 0}
+  .patch.tl{top:0;left:0;width:290px;height:56px}
+  .patch.bl{bottom:0;left:0;width:220px;height:26px;border-radius:0 10px 0 0}
+
+  .hud{
+    position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    z-index:6;display:flex;align-items:center;gap:10px;
+  }
+  .hud .board{padding:8px 20px;display:flex;gap:24px;align-items:center}
+  .hud .stat{text-align:center}
+  .hud .stat .l{font-size:9px;letter-spacing:.3em;color:#8f96a5;text-transform:uppercase}
+  .hud .stat .v{font-size:18px;font-weight:700;color:var(--marigold)}
+
+  /* Guess map panel */
+  #mapPanel{
+    position:absolute;right:16px;bottom:16px;z-index:7;
+    width:340px;height:250px;
+    border:3px solid #262c38;border-radius:12px;overflow:hidden;
+    background:var(--paper);
+    box-shadow:0 10px 40px rgba(0,0,0,.55);
+    transition:width .18s ease,height .18s ease;
+    display:flex;flex-direction:column;
+  }
+  #mapPanel.big{width:min(620px,calc(100vw - 32px));height:min(480px,calc(100vh - 120px))}
+  #guessMap{flex:1;min-height:0}
+  #mapBar{
+    display:flex;gap:8px;padding:8px;background:var(--board);align-items:center;
+  }
+  #sizeToggle{
+    background:var(--ink-2);color:#c7cdd9;border:1px solid var(--line);
+    border-radius:6px;padding:8px 12px;font-size:12px;
+  }
+  #guessBtn{
+    flex:1;background:#3a4152;color:#9aa2b3;font-weight:700;font-size:13px;
+    letter-spacing:.1em;text-transform:uppercase;padding:10px;border-radius:6px;
+    transition:background .15s ease,color .15s ease;
+  }
+  #guessBtn.ready{background:var(--marigold);color:#221a00}
+
+  /* ---------- Result screen ---------- */
+  #resultScreen{background:var(--ink);padding:0;display:none;flex-direction:column}
+  #resultScreen.active{display:flex}
+  #resultMap{flex:1;width:100%}
+  #resultBar{
+    background:var(--board);border-top:3px solid #262c38;
+    padding:16px 20px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:center;
+  }
+  #resultBar .board{padding:10px 22px}
+  #resultBar .board .b-main{font-size:clamp(16px,3vw,24px)}
+  .score-pill{text-align:center;min-width:110px}
+  .score-pill .l{font-size:10px;letter-spacing:.25em;color:#8f96a5;text-transform:uppercase}
+  .score-pill .v{font-size:26px;font-weight:700;color:var(--marigold)}
+  .meter{width:170px;height:10px;background:#2a3140;border-radius:5px;overflow:hidden}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--red),var(--marigold),var(--green));width:0;transition:width .9s ease}
+
+  /* ---------- Final screen ---------- */
+  #finalScreen{gap:22px;background:
+    radial-gradient(1000px 400px at 50% 110%, #2b2410 0%, transparent 60%), var(--ink)}
+  #finalScreen .board .b-main{font-size:clamp(34px,8vw,64px)}
+  #breakdown{width:min(460px,92vw);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  #breakdown .row{
+    display:flex;justify-content:space-between;gap:12px;
+    padding:10px 16px;background:var(--ink-2);border-bottom:1px solid var(--line);
+    font-size:14px;color:#c7cdd9;
+  }
+  #breakdown .row:last-child{border-bottom:none}
+  #breakdown .row b{color:var(--marigold)}
+  #breakdown .row .place{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn-ghost{background:transparent;color:#c7cdd9;border:1px solid var(--line);padding:12px 26px;border-radius:8px;font-size:14px}
+  .btn-ghost:hover{border-color:var(--marigold);color:var(--marigold)}
+
+  .leaflet-container{font:inherit}
+  @media (max-width:640px){
+    #mapPanel{width:calc(100vw - 24px);height:220px;right:12px;bottom:12px}
+    #mapPanel.big{height:min(420px,60vh)}
+    .patch.tl{width:220px;height:50px}
+    .hud .board{gap:14px;padding:6px 14px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important;animation:none !important}
+  }
+</style>
+</head>
+<body>
+
+<!-- ======== START ======== -->
+<div id="startScreen" class="screen active">
+  <div class="board">
+    <div class="b-top">भारत · स्टेशन</div>
+    <div class="b-main">Bharat Guessr</div>
+    <div class="b-sub">Where in India are you?</div>
+  </div>
+  <p class="tagline">You'll be dropped on a real street somewhere in India. Walk the roads, read the shopfronts, study the autos and signboards — then pin your guess on the map. The closer your pin, the more you score.</p>
+  <div class="rules">
+    <div><b>5</b>rounds</div>
+    <div><b>100</b>points per round</div>
+    <div><b>&lt; 250 m</b>for a perfect 100</div>
+  </div>
+  <button class="btn-primary" id="startBtn">Start the journey</button>
+</div>
+
+<!-- ======== GAME ======== -->
+<div id="gameScreen" class="screen">
+  <div id="svWrap">
+    <iframe id="svFrame" title="Street view" allow="fullscreen"></iframe>
+    <div class="patch tl"></div>
+    <div class="patch bl"></div>
+  </div>
+  <div class="hud">
+    <div class="board">
+      <div class="stat"><div class="l">Round</div><div class="v" id="hudRound">1 / 5</div></div>
+      <div class="stat"><div class="l">Total</div><div class="v" id="hudScore">0</div></div>
+    </div>
+  </div>
+  <div id="mapPanel">
+    <div id="guessMap"></div>
+    <div id="mapBar">
+      <button id="sizeToggle" aria-label="Resize map">⤢ Resize</button>
+      <button id="guessBtn" disabled>Place a pin first</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======== ROUND RESULT ======== -->
+<div id="resultScreen" class="screen">
+  <div id="resultMap"></div>
+  <div id="resultBar">
+    <div class="board">
+      <div class="b-top">You were at</div>
+      <div class="b-main" id="revealName">—</div>
+      <div class="b-sub" id="revealCity">—</div>
+    </div>
+    <div class="score-pill">
+      <div class="l">Distance</div>
+      <div class="v" id="resDist">—</div>
+    </div>
+    <div class="score-pill">
+      <div class="l">Round score</div>
+      <div class="v" id="resScore">—</div>
+      <div class="meter"><i id="resMeter"></i></div>
+    </div>
+    <button class="btn-primary" id="nextBtn">Next round</button>
+  </div>
+</div>
+
+<!-- ======== FINAL ======== -->
+<div id="finalScreen" class="screen">
+  <div class="board">
+    <div class="b-top">अंतिम स्कोर · Final Score</div>
+    <div class="b-main" id="finalScore">0 / 100</div>
+    <div class="b-sub" id="finalVerdict">—</div>
+  </div>
+  <div id="breakdown"></div>
+  <button class="btn-primary" id="againBtn">Play again</button>
+</div>
+
+<script>
+/* ------------------------------------------------------------------
+   Location pool — streets in cities with official Street View coverage
+------------------------------------------------------------------- */
+const POOL = [
+  {name:"Marine Drive",        city:"Mumbai, Maharashtra",     lat:18.94398, lng:72.82355},
+  {name:"Colaba Causeway",     city:"Mumbai, Maharashtra",     lat:18.92177, lng:72.83107},
+  {name:"Bandra Bandstand",    city:"Mumbai, Maharashtra",     lat:19.04234, lng:72.81811},
+  {name:"Juhu Tara Road",      city:"Mumbai, Maharashtra",     lat:19.09884, lng:72.82649},
+  {name:"Connaught Place",     city:"New Delhi",               lat:28.63152, lng:77.21874},
+  {name:"Kartavya Path",       city:"New Delhi",               lat:28.61479, lng:77.22664},
+  {name:"Karol Bagh",          city:"New Delhi",               lat:28.65181, lng:77.19024},
+  {name:"MG Road",             city:"Bengaluru, Karnataka",    lat:12.97466, lng:77.60700},
+  {name:"Church Street",       city:"Bengaluru, Karnataka",    lat:12.97516, lng:77.60420},
+  {name:"100 Feet Road, Indiranagar", city:"Bengaluru, Karnataka", lat:12.97124, lng:77.64080},
+  {name:"Kamarajar Salai, Marina Beach", city:"Chennai, Tamil Nadu", lat:13.05387, lng:80.28221},
+  {name:"Usman Road, T. Nagar",city:"Chennai, Tamil Nadu",     lat:13.04170, lng:80.23400},
+  {name:"Elliot's Beach Road", city:"Chennai, Tamil Nadu",     lat:13.00030, lng:80.27164},
+  {name:"Tank Bund",           city:"Hyderabad, Telangana",    lat:17.42381, lng:78.47401},
+  {name:"HITEC City",          city:"Hyderabad, Telangana",    lat:17.44450, lng:78.37716},
+  {name:"Road No. 1, Banjara Hills", city:"Hyderabad, Telangana", lat:17.41565, lng:78.43870},
+  {name:"Fergusson College Road", city:"Pune, Maharashtra",    lat:18.52293, lng:73.84150},
+  {name:"Heritage Street",     city:"Amritsar, Punjab",        lat:31.62346, lng:74.87824},
+  {name:"Park Street",         city:"Kolkata, West Bengal",    lat:22.55295, lng:88.35213},
+  {name:"Howrah Bridge approach", city:"Kolkata, West Bengal", lat:22.58286, lng:88.34461},
+  {name:"Sabarmati Riverfront",city:"Ahmedabad, Gujarat",      lat:23.02714, lng:72.57069},
+  {name:"College Road",        city:"Nashik, Maharashtra",     lat:19.99973, lng:73.76551},
+  {name:"Sayajigunj",          city:"Vadodara, Gujarat",       lat:22.30894, lng:73.18122},
+];
+
+const ROUNDS = 5;
+const INDIA_CENTER = [22.5, 79.0];
+
+let order = [], round = 0, total = 0, guessLatLng = null, results = [];
+let guessMap = null, guessMarker = null, resultMap = null;
+
+const $ = id => document.getElementById(id);
+const show = id => {
+  ["startScreen","gameScreen","resultScreen","finalScreen"].forEach(s => $(s).classList.remove("active"));
+  $(id).classList.add("active");
+};
+
+/* ---------------- helpers ---------------- */
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+function haversine(lat1,lng1,lat2,lng2){
+  const R = 6371, toRad = d => d*Math.PI/180;
+  const dLat = toRad(lat2-lat1), dLng = toRad(lng2-lng1);
+  const h = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+/* 100 pts within 250 m, exponential decay after — halves roughly every 175 km */
+function scoreFor(km){
+  if(km <= 0.25) return 100;
+  return Math.max(0, Math.round(100 * Math.exp(-km/250)));
+}
+function fmtDist(km){
+  return km < 1 ? Math.round(km*1000) + " m" : (km < 10 ? km.toFixed(1) : Math.round(km)) + " km";
+}
+
+const pinIcon = L.divIcon({
+  className:"", iconSize:[26,36], iconAnchor:[13,34],
+  html:'<svg width="26" height="36" viewBox="0 0 26 36"><path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 23 13 23s13-13.2 13-23C26 5.8 20.2 0 13 0z" fill="#ffb300" stroke="#131720" stroke-width="2"/><circle cx="13" cy="13" r="4.5" fill="#131720"/></svg>'
+});
+const flagIcon = L.divIcon({
+  className:"", iconSize:[26,36], iconAnchor:[13,34],
+  html:'<svg width="26" height="36" viewBox="0 0 26 36"><path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 23 13 23s13-13.2 13-23C26 5.8 20.2 0 13 0z" fill="#1e9e63" stroke="#0d0f13" stroke-width="2"/><circle cx="13" cy="13" r="4.5" fill="#fff"/></svg>'
+});
+
+/* ---------------- game flow ---------------- */
+function startGame(){
+  order = shuffle([...POOL]).slice(0, ROUNDS);
+  round = 0; total = 0; results = [];
+  show("gameScreen");
+  if(!guessMap){
+    guessMap = L.map("guessMap", {zoomControl:true, attributionControl:false}).setView(INDIA_CENTER, 4);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19}).addTo(guessMap);
+    guessMap.on("click", e => {
+      guessLatLng = e.latlng;
+      if(guessMarker) guessMarker.setLatLng(e.latlng);
+      else guessMarker = L.marker(e.latlng, {icon:pinIcon}).addTo(guessMap);
+      const b = $("guessBtn");
+      b.disabled = false; b.classList.add("ready"); b.textContent = "Make guess";
+    });
+  }
+  loadRound();
+}
+
+function loadRound(){
+  const loc = order[round];
+  guessLatLng = null;
+  if(guessMarker){ guessMap.removeLayer(guessMarker); guessMarker = null; }
+  const b = $("guessBtn");
+  b.disabled = true; b.classList.remove("ready"); b.textContent = "Place a pin first";
+  guessMap.setView(INDIA_CENTER, 4);
+  $("hudRound").textContent = (round+1) + " / " + ROUNDS;
+  $("hudScore").textContent = total;
+  const heading = Math.floor(Math.random()*360);
+  $("svFrame").src = "https://maps.google.com/maps?layer=c&cbll=" + loc.lat + "," + loc.lng +
+                     "&cbp=11," + heading + ",0,0,0&source=embed&output=svembed";
+  setTimeout(() => guessMap.invalidateSize(), 150);
+}
+
+function submitGuess(){
+  const loc = order[round];
+  const d = haversine(guessLatLng.lat, guessLatLng.lng, loc.lat, loc.lng);
+  const pts = scoreFor(d);
+  total += pts;
+  results.push({loc, d, pts});
+
+  show("resultScreen");
+  $("revealName").textContent = loc.name;
+  $("revealCity").textContent = loc.city;
+  $("resDist").textContent = fmtDist(d);
+  $("resScore").textContent = pts + " / 100";
+  $("nextBtn").textContent = round === ROUNDS-1 ? "See final score" : "Next round";
+
+  if(resultMap){ resultMap.remove(); }
+  resultMap = L.map("resultMap", {attributionControl:false}).setView(INDIA_CENTER, 4);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19}).addTo(resultMap);
+  const g = [guessLatLng.lat, guessLatLng.lng], a = [loc.lat, loc.lng];
+  L.marker(g, {icon:pinIcon}).addTo(resultMap).bindTooltip("Your guess");
+  L.marker(a, {icon:flagIcon}).addTo(resultMap).bindTooltip(loc.name);
+  L.polyline([g,a], {color:"#ffb300", weight:3, dashArray:"8 8"}).addTo(resultMap);
+  resultMap.fitBounds(L.latLngBounds([g,a]).pad(0.35));
+  setTimeout(() => {
+    resultMap.invalidateSize();
+    $("resMeter").style.width = pts + "%";
+  }, 120);
+  $("resMeter").style.width = "0%";
+}
+
+function nextRound(){
+  round++;
+  if(round >= ROUNDS){ showFinal(); return; }
+  show("gameScreen");
+  loadRound();
+}
+
+function showFinal(){
+  const avg = Math.round(total / ROUNDS);
+  $("finalScore").textContent = avg + " / 100";
+  $("finalVerdict").textContent =
+    avg >= 85 ? "Certified desi navigator" :
+    avg >= 60 ? "You know your gullies" :
+    avg >= 35 ? "Somewhere on the subcontinent…" :
+                "Time for a road trip";
+  const bd = $("breakdown");
+  bd.innerHTML = "";
+  results.forEach((r,i) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = '<span class="place">R' + (i+1) + ' · ' + r.loc.name + ', ' + r.loc.city.split(",")[0] +
+                    '</span><span>' + fmtDist(r.d) + ' · <b>' + r.pts + '</b></span>';
+    bd.appendChild(row);
+  });
+  show("finalScreen");
+}
+
+/* ---------------- wiring ---------------- */
+$("startBtn").addEventListener("click", startGame);
+$("againBtn").addEventListener("click", startGame);
+$("guessBtn").addEventListener("click", () => { if(guessLatLng) submitGuess(); });
+$("nextBtn").addEventListener("click", nextRound);
+$("sizeToggle").addEventListener("click", () => {
+  $("mapPanel").classList.toggle("big");
+  setTimeout(() => guessMap.invalidateSize(), 200);
+});
+</script>
+</body>
+</html>
